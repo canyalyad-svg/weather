@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Tetris</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a2e;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .panel {
+            background: rgba(22, 33, 62, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+            color: #fff;
+            min-width: 200px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            pointer-events: auto;
+            transition: transform 0.3s ease;
+        }
+        .panel:hover {
+            transform: translateY(-2px);
+            border-color: rgba(100, 200, 255, 0.5);
+        }
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #4db8ff;
+            text-shadow: 0 0 10px rgba(77, 184, 255, 0.5);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        .stat-value {
+            font-weight: bold;
+            color: #ffd700;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+        .hidden {
+            display: none !important;
+        }
+        h1 {
+            font-size: 4rem;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px #4db8ff, 0 0 40px #4db8ff;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); text-shadow: 0 0 20px #4db8ff; }
+            50% { transform: scale(1.05); text-shadow: 0 0 40px #4db8ff, 0 0 60px #fff; }
+            100% { transform: scale(1); text-shadow: 0 0 20px #4db8ff; }
+        }
+        button {
+            background: linear-gradient(45deg, #4db8ff, #0077be);
+            border: none;
+            padding: 15px 40px;
+            color: white;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(77, 184, 255, 0.5);
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+        button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(77, 184, 255, 0.8);
+            background: linear-gradient(45deg, #0077be, #4db8ff);
+        }
+        .controls-hint {
+            margin-top: 30px;
+            color: #aaa;
+            font-size: 0.9rem;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .key {
+            display: inline-block;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.2);
+            margin: 0 2px;
+            font-family: monospace;
+        }
+        #pause-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            color: #fff;
+            text-shadow: 0 0 20px #ff0055;
+            display: none;
+            z-index: 5;
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <div class="panel">
+            <h2>Статистика</h2>
+            <div class="stat-row"><span>Счет:</span><span id="score" class="stat-value">0</span></div>
+            <div class="stat-row"><span>Линии:</span><span id="lines" class="stat-value">0</span></div>
+            <div class="stat-row"><span>Уровень:</span><span id="level" class="stat-value">1</span></div>
+        </div>
+        
+        <div class="panel" style="text-align: right;">
+            <h2>Следующая</h2>
+            <div id="next-piece-container" style="width: 100px; height: 100px; margin: 0 auto;"></div>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h1>3D TETRIS</h1>
+        <button id="start-btn">ИГРАТЬ</button>
+        <div class="controls-hint">
+            <span class="key">←</span> <span class="key">→</span> Движение &nbsp;|&nbsp; 
+            <span class="key">↑</span> Поворот &nbsp;|&nbsp; 
+            <span class="key">↓</span> Ускорение &nbsp;|&nbsp; 
+            <span class="key">Пробел</span> Сброс<br>
+            <span class="key">P</span> Пауза &nbsp;|&nbsp; 
+            <span class="key">M</span> Камера
+        </div>
+    </div>
+
+    <div id="pause-indicator">ПАУЗА</div>
+</div>
+
+<script>
+    // --- КОНФИГУРАЦИЯ ИГРЫ ---
+    const COLS = 10;
+    const ROWS = 20;
+    const BLOCK_SIZE = 1;
+    const COLORS = [
+        0x000000, 0x00FFFF, 0x0000FF, 0xFFA500, 0xFFFF00, 0x00FF00, 0x800080, 0xFF0000
+    ];
+
+    const SHAPES = [
+        [],
+        [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
+        [[2,0,0],[2,2,2],[0,0,0]], // J
+        [[0,0,3],[3,3,3],[0,0,0]], // L
+        [[4,4],[4,4]], // O
+        [[0,5,5],[5,5,0],[0,0,0]], // S
+        [[0,6,0],[6,6,6],[0,0,0]], // T
+        [[7,7,0],[0,7,7],[0,0,0]]  // Z
+    ];
+
+    // --- THREE.JS ПЕРЕМЕННЫЕ ---
+    let scene, camera, renderer;
+    let boardGroup, activePieceGroup;
+    let nextPieceScene, nextPieceCamera, nextPieceRenderer;
+    let grid = []; 
+    let meshes = []; 
+    let activePiece = null;
+    let nextPieceType = null;
+    let score = 0, linesCleared = 0, level = 1;
+    let isGameOver = false, isPaused = false, isPlaying = false;
+    let dropInterval = 1000, lastDropTime = 0;
+    let cameraAngle = 0, autoRotateCamera = true;
+
+    const scoreEl = document.getElementById('score');
+    const linesEl = document.getElementById('lines');
+    const levelEl = document.getElementById('level');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('start-btn');
+    const pauseIndicator = document.getElementById('pause-indicator');
+
+    function init3D() {
+        const container = document.getElementById('game-container');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        scene.fog = new THREE.FogExp2(0x1a1a2e, 0.02);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        updateCameraPosition();
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const pointLight = new THREE.PointLight(0x4db8ff, 0.5, 50);
+        pointLight.position.set(0, 10, 5);
+        scene.add(pointLight);
+
+        boardGroup = new THREE.Group();
+        boardGroup.position.set(-COLS/2 * BLOCK_SIZE, -ROWS/2 * BLOCK_SIZE, 0);
+        scene.add(boardGroup);
+
+        createBoardFrame();
+        resetGrid();
+        initNextPiecePreview();
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function createBoardFrame() {
+        const geometry = new THREE.BoxGeometry(COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE, BLOCK_SIZE * 0.9);
+        const edges = new THREE.EdgesGeometry(geometry);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x444466, transparent: true, opacity: 0.3 }));
+        boardGroup.add(line);
+
+        // Пол
+        const floorGeo = new THREE.PlaneGeometry(COLS * BLOCK_SIZE, COLS * BLOCK_SIZE);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.1, metalness: 0.5 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -BLOCK_SIZE/2;
+        floor.receiveShadow = true;
+        boardGroup.add(floor);
+    }
+
+    function initNextPiecePreview() {
+        const container = document.getElementById('next-piece-container');
+        nextPieceScene = new THREE.Scene();
+        nextPieceScene.background = new THREE.Color(0x000000);
+        nextPieceCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 50);
+        nextPieceCamera.position.set(0, 0, 8);
+        
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(2, 2, 5);
+        nextPieceScene.add(light);
+        nextPieceScene.add(new THREE.AmbientLight(0x404040));
+
+        nextPieceRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        nextPieceRenderer.setSize(100, 100);
+        container.appendChild(nextPieceRenderer.domElement);
+    }
+
+    function resetGrid() {
+        grid = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+        // Очищаем меши
+        while(boardGroup.children.length > 1) { // Оставляем линию каркаса
+            boardGroup.remove(boardGroup.children[1]);
+        }
+        meshes = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+    }
+
+    function createBlockMesh(type, isGhost = false) {
+        const color = COLORS[type];
+        const geometry = new THREE.BoxGeometry(BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95);
+        let material;
+        
+        if (isGhost) {
+            material = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.2, wireframe: true });
+        } else {
+            material = new THREE.MeshStandardMaterial({ 
+                color: color, 
+                roughness: 0.2, 
+                metalness: 0.1,
+                emissive: color,
+                emissiveIntensity: 0.2
+            });
+        }
+        
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = !isGhost;
+        mesh.receiveShadow = !isGhost;
+        return mesh;
+    }
+
+    class Piece {
+        constructor(type) {
+            this.type = type;
+            this.shape = JSON.parse(JSON.stringify(SHAPES[type]));
+            this.row = 0;
+            this.col = Math.floor(COLS / 2) - Math.floor(this.shape[0].length / 2);
+            this.group = new THREE.Group();
+            this.meshes = [];
+            this.updateMeshes();
+            boardGroup.add(this.group);
+        }
+
+        updateMeshes() {
+            // Очищаем старые меши
+            while(this.group.children.length > 0) {
+                this.group.remove(this.group.children[0]);
+            }
+            this.meshes = [];
+
+            for(let r=0; r<this.shape.length; r++) {
+                for(let c=0; c<this.shape[r].length; c++) {
+                    if(this.shape[r][c] !== 0) {
+                        const mesh = createBlockMesh(this.type);
+                        mesh.position.set(c * BLOCK_SIZE, -r * BLOCK_SIZE, 0);
+                        this.group.add(mesh);
+                        this.meshes.push({r, c, mesh});
+                    }
+                }
+            }
+            this.updateGroupPosition();
+        }
+
+        updateGroupPosition() {
+            this.group.position.set(this.col * BLOCK_SIZE, -this.row * BLOCK_SIZE, 0);
+        }
+
+        rotate() {
+            const N = this.shape.length;
+            const rotated = this.shape[0].map((val, index) => this.shape.map(row => row[index]).reverse());
+            
+            // Проверка коллизий после поворота
+            if (!this.checkCollision(rotated, this.row, this.col)) {
+                this.shape = rotated;
+                this.updateMeshes();
+            } else if (!this.checkCollision(rotated, this.row, this.col - 1)) { // Wall kick left
+                this.col--;
+                this.shape = rotated;
+                this.updateMeshes();
+            } else if (!this.checkCollision(rotated, this.row, this.col + 1)) { // Wall kick right
+                this.col++;
+                this.shape = rotated;
+                this.updateMeshes();
+            }
+        }
+
+        move(dr, dc) {
+            if (!this.checkCollision(this.shape, this.row + dr, this.col + dc)) {
+                this.row += dr;
+                this.col += dc;
+                this.updateGroupPosition();
+                return true;
+            }
+            return false;
+        }
+
+        checkCollision(shape, rowOffset, colOffset) {
+            for(let r=0; r<shape.length; r++) {
+                for(let c=0; c<shape[r].length; c++) {
+                    if(shape[r][c] !== 0) {
+                        const newR = rowOffset + r;
+                        const newC = colOffset + c;
+                        if(newC < 0 || newC >= COLS || newR >= ROWS) return true;
+                        if(newR >= 0 && grid[newR][newC] !== 0) return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    function spawnPiece() {
+        if(nextPieceType === null) {
+            nextPieceType = Math.floor(Math.random() * 7) + 1;
+        }
+        const type = nextPieceType;
+        nextPieceType = Math.floor(Math.random() * 7) + 1;
+        renderNextPiece();
+
+        activePiece = new Piece(type);
+        
+        if(activePiece.checkCollision(activePiece.shape, activePiece.row, activePiece.col)) {
+            gameOver();
+        }
+    }
+
+    function renderNextPiece() {
+        while(nextPieceScene.children.length > 2) {
+            nextPieceScene.remove(nextPieceScene.children[2]);
+        }
+        
+        const shape = SHAPES[nextPieceType];
+        const group = new THREE.Group();
+        
+        for(let r=0; r<shape.length; r++) {
+            for(let c=0; c<shape[r].length; c++) {
+                if(shape[r][c] !== 0) {
+                    const mesh = createBlockMesh(nextPieceType);
+                    mesh.position.set((c - shape[0].length/2) * 1.5, -(r - shape.length/2) * 1.5, 0);
+                    group.add(mesh);
+                }
+            }
+        }
+        nextPieceScene.add(group);
+    }
+
+    function lockPiece() {
+        for(let r=0; r<activePiece.shape.length; r++) {
+            for(let c=0; c<activePiece.shape[r].length; c++) {
+                if(activePiece.shape[r][c] !== 0) {
+                    const boardR = activePiece.row + r;
+                    const boardC = activePiece.col + c;
+                    if(boardR >= 0 && boardR < ROWS && boardC >= 0 && boardC < COLS) {
+                        grid[boardR][boardC] = activePiece.type;
+                        
+                        // Создаем статический меш на доске
+                        const mesh = createBlockMesh(activePiece.type);
+                        mesh.position.set(boardC * BLOCK_SIZE, -boardR * BLOCK_SIZE, 0);
+                        boardGroup.add(mesh);
+                        meshes[boardR][boardC] = mesh;
+                    }
+                }
+            }
+        }
+        
+        boardGroup.remove(activePiece.group);
+        activePiece = null;
+        
+        clearLines();
+        spawnPiece();
+    }
+
+    function clearLines() {
+        let linesToClear = [];
+        for(let r=0; r<ROWS; r++) {
+            if(grid[r].every(cell => cell !== 0)) {
+                linesToClear.push(r);
+            }
+        }
+
+        if(linesToClear.length > 0) {
+            // Анимация удаления
+            linesToClear.forEach(r => {
+                for(let c=0; c<COLS; c++) {
+                    if(meshes[r][c]) {
+                        boardGroup.remove(meshes[r][c]);
+                        meshes[r][c] = null;
+                    }
+                    grid[r][c] = 0;
+                }
+            });
+
+            // Сдвиг линий вниз
+            for(let r=linesToClear[linesToClear.length-1]; r>=0; r--) {
+                if(!linesToClear.includes(r)) {
+                    const shiftDown = linesToClear.filter(lr => lr > r).length;
+                    if(shiftDown > 0) {
+                        for(let c=0; c<COLS; c++) {
+                            if(grid[r][c] !== 0) {
+                                grid[r+shiftDown][c] = grid[r][c];
+                                grid[r][c] = 0;
+                                
+                                if(meshes[r][c]) {
+                                    meshes[r+shiftDown][c] = meshes[r][c];
+                                    meshes[r][c] = null;
+                                    meshes[r+shiftDown][c].position.y = -(r+shiftDown) * BLOCK_SIZE;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Обновление счета
+            const points = [0, 100, 300, 500, 800];
+            score += points[linesToClear.length] * level;
+            linesCleared += linesToClear.length;
+            level = Math.floor(linesCleared / 10) + 1;
+            dropInterval = Math.max(100, 1000 - (level - 1) * 100);
+
+            updateUI();
+        }
+    }
+
+    function updateUI() {
+        scoreEl.textContent = score;
+        linesEl.textContent = linesCleared;
+        levelEl.textContent = level;
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        isPlaying = false;
+        overlay.classList.remove('hidden');
+        document.querySelector('#overlay h1').textContent = "GAME OVER";
+        startBtn.textContent = "ЗАНОВО";
+    }
+
+    function resetGame() {
+        score = 0;
+        linesCleared = 0;
+        level = 1;
+        dropInterval = 1000;
+        isGameOver = false;
+        isPaused = false;
+        isPlaying = true;
+        updateUI();
+        resetGrid();
+        nextPieceType = null;
+        spawnPiece();
+        overlay.classList.add('hidden');
+        lastDropTime = performance.now();
+    }
+
+    function updateCameraPosition() {
+        const radius = 28;
+        camera.position.x = Math.sin(cameraAngle) * radius;
+        camera.position.z = Math.cos(cameraAngle) * radius;
+        camera.position.y = 5;
+        camera.lookAt(0, 0, 0);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+
+        if(autoRotateCamera && isPlaying && !isPaused) {
+            cameraAngle += 0.002;
+            updateCameraPosition();
+        }
+
+        if(nextPieceRenderer) {
+            nextPieceRenderer.render(nextPieceScene, nextPieceCamera);
+        }
+
+        if(isPlaying && !isPaused && !isGameOver) {
+            if(time - lastDropTime > dropInterval) {
+                if(activePiece && !activePiece.move(1, 0)) {
+                    lockPiece();
+                }
+                lastDropTime = time;
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // Управление
+    document.addEventListener('keydown', (e) => {
+        if(!isPlaying || isGameOver) return;
+
+        if(e.key === 'p' || e.key === 'P') {
+            isPaused = !isPaused;
+            pauseIndicator.style.display = isPaused ? 'block' : 'none';
+            return;
+        }
+
+        if(isPaused) return;
+
+        if(activePiece) {
+            switch(e.key) {
+                case 'ArrowLeft': activePiece.move(0, -1); break;
+                case 'ArrowRight': activePiece.move(0, 1); break;
+                case 'ArrowDown': activePiece.move(1, 0); break;
+                case 'ArrowUp': activePiece.rotate(); break;
+                case ' ': // Hard drop
+                    while(activePiece.move(1, 0)) {}
+                    lockPiece();
+                    break;
+            }
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if(e.key === 'm' || e.key === 'M') {
+            autoRotateCamera = !autoRotateCamera;
+        }
+    });
+
+    startBtn.addEventListener('click', resetGame);
+
+    // Запуск
+    init3D();
+    animate(0);
+
+</script>
+</body>
+</html>
